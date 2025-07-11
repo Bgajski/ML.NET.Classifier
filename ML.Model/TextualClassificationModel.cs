@@ -1,129 +1,175 @@
 ﻿using Microsoft.ML;
 using Microsoft.ML.Data;
+using Microsoft.ML.Trainers;
 using Microsoft.ML.Trainers.FastTree;
 using Microsoft.ML.Transforms.Text;
+using ML.Model;
+using System;
+using System.Linq;
 
 namespace ML.Model
 {
+    /// <summary>
+    /// a model for multiclass text classification with support for:
+    /// - fastforest wrapped in one-versus-all (default setup for binary or multiclass text classification)
+    /// - naive bayes multiclass classifier (faster, probabilistic)
+    /// 
+    /// features:
+    /// - custom decision threshold for binary-like decisions (e.g., spam vs ham)
+    /// - easy prediction on a single input string
+    /// - full support for model evaluation, transformation, and probability analysis
+    /// </summary>
     public class TextualClassificationModel : ITextualClassificationModel
     {
-        private readonly MLContext _mlContext;
-        private ITransformer _trainedModel;
+        private readonly MLContext _ml;
+        private ITransformer? _model;             // trained ml.net model pipeline
+        private double _threshold = 0.5;          // decision threshold for binary-like use case
 
-        public TextualClassificationModel(MLContext mlContext)
+        public TextualClassificationModel(MLContext ml) => _ml = ml;
+
+        /// <summary>
+        /// trains a one-versus-all model using fastforest with word and char tf-idf features
+        /// </summary>
+        public ITransformer TrainFastForest(IDataView train)
         {
-            _mlContext = mlContext;
-        }
-
-        public ITransformer TrainFastForest(IDataView trainingData)
-        {
-            var pipeline = _mlContext.Transforms.Conversion.MapValueToKey("Label")
-                .Append(_mlContext.Transforms.Text.FeaturizeText("Features", "Text"))
-                .AppendCacheCheckpoint(_mlContext)
-                .Append(_mlContext.MulticlassClassification.Trainers.OneVersusAll(
-                    binaryEstimator: _mlContext.BinaryClassification.Trainers.FastForest(new FastForestBinaryTrainer.Options
-                    {
-                        NumberOfLeaves = 50,
-                        NumberOfTrees = 100,
-                        MinimumExampleCountPerLeaf = 1
-                    }), labelColumnName: "Label"))
-                .Append(_mlContext.Transforms.Conversion.MapKeyToValue("PredictedLabel"));
-
-            _trainedModel = pipeline.Fit(trainingData);
-            return _trainedModel;
-        }
-
-        public ITransformer TrainNaiveBayes(IDataView trainingData)
-        {
-            var ngramLengths = new int[] { 1, 2, 3 };
-            ITransformer bestModel = null;
-            double bestMicroAccuracy = 0;
-
-            foreach (var ngramLength in ngramLengths)
+            // configure text featurization using tf-idf for word and char ngrams
+            var txtOpts = new TextFeaturizingEstimator.Options
             {
-                var pipeline = _mlContext.Transforms.Conversion.MapValueToKey("Label")
-                    .Append(_mlContext.Transforms.Text.FeaturizeText("Features", new TextFeaturizingEstimator.Options
-                    {
-                        WordFeatureExtractor = new WordBagEstimator.Options
-                        {
-                            NgramLength = ngramLength,
-                            UseAllLengths = true,
-                            Weighting = NgramExtractingEstimator.WeightingCriteria.TfIdf
-                        },
-                        CharFeatureExtractor = new WordBagEstimator.Options
-                        {
-                            NgramLength = 3,
-                            UseAllLengths = false,
-                            Weighting = NgramExtractingEstimator.WeightingCriteria.TfIdf
-                        },
-                        Norm = TextFeaturizingEstimator.NormFunction.L2,
-                        KeepPunctuations = false,
-                        StopWordsRemoverOptions = new StopWordsRemovingEstimator.Options
-                        {
-                            Language = TextFeaturizingEstimator.Language.English
-                        }
-                    }, "Text"))
-                    .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
-                    .Append(_mlContext.MulticlassClassification.Trainers.NaiveBayes(labelColumnName: "Label", featureColumnName: "Features"))
-                    .Append(_mlContext.Transforms.Conversion.MapKeyToValue("PredictedLabel"));
+                KeepPunctuations = false, // remove punctuation characters from text (e.g., '.', ',', '!')
 
-                var crossValidationResults = _mlContext.MulticlassClassification.CrossValidate(trainingData, pipeline, numberOfFolds: 5);
-              
-                var averageMicroAccuracy = crossValidationResults.Average(cvResult => cvResult.Metrics.MicroAccuracy);
-
-                if (averageMicroAccuracy > bestMicroAccuracy)
+                WordFeatureExtractor = new WordBagEstimator.Options
                 {
-                    bestMicroAccuracy = averageMicroAccuracy;
-                    bestModel = pipeline.Fit(trainingData);
+                    NgramLength = 2,                // extract bigrams (e.g., "email spam", "free offer")
+                    UseAllLengths = true,          // also include unigrams (e.g., "email", "spam")
+                    Weighting = NgramExtractingEstimator.WeightingCriteria.TfIdf // apply tf-idf weighting to word ngrams
+                },
+
+                CharFeatureExtractor = new WordBagEstimator.Options
+                {
+                    NgramLength = 3,                // extract character trigrams (e.g., "fre", "ree", "e o", " of")
+                    UseAllLengths = false,         // only extract ngrams of exactly length 3 (no unigrams or bigrams)
+                    Weighting = NgramExtractingEstimator.WeightingCriteria.TfIdf // apply tf-idf weighting to character ngrams
                 }
-            }
+            };
 
-            _trainedModel = bestModel;
-            return _trainedModel;
+            // generate "features" column from "text"
+            var textFeats = _ml.Transforms.Text.FeaturizeText("Features", txtOpts, "Text");
+
+            // configure binary fastforest to use in ova
+            var ffBin = _ml.BinaryClassification.Trainers.FastForest(new()
+            {
+                Seed = 42,                             // random seed for reproducibility
+                NumberOfLeaves = 40,                   // tree depth
+                NumberOfTrees = 120,                   // ensemble size
+                MinimumExampleCountPerLeaf = 3,        // minimum samples per leaf
+                FeatureFraction = 0.8f                 // subset of features per split
+            });
+
+            // build pipeline: key -> features -> ova -> unkey
+            var pipe = _ml.Transforms.Conversion.MapValueToKey("Label")
+                       .Append(textFeats)
+                       .AppendCacheCheckpoint(_ml)
+                       .Append(_ml.MulticlassClassification.Trainers.OneVersusAll(ffBin, labelColumnName: "Label"))
+                       .Append(_ml.Transforms.Conversion.MapKeyToValue("PredictedLabel"));
+
+            _model = pipe.Fit(train);
+            return _model;
         }
 
-        public MulticlassClassificationMetrics EvaluateModel(IDataView testData)
+        /// <summary>
+        /// trains a multiclass naive bayes model using tf-idf text features
+        /// </summary>
+        public ITransformer TrainNaiveBayes(IDataView train)
         {
-            if (_trainedModel == null)
-                throw new InvalidOperationException("Model has not been trained yet.");
+            // default featurization with tf-idf on words
+            var textFeats = _ml.Transforms.Text.FeaturizeText("Features", "Text");
 
-            var predictions = _trainedModel.Transform(testData);
-            var metrics = _mlContext.MulticlassClassification.Evaluate(predictions);
-            return metrics;
+            var pipe = _ml.Transforms.Conversion.MapValueToKey("Label")
+                       .Append(textFeats)
+                       .AppendCacheCheckpoint(_ml)
+                       .Append(_ml.MulticlassClassification.Trainers.NaiveBayes(
+                           labelColumnName: "Label",
+                           featureColumnName: "Features"))
+                       .Append(_ml.Transforms.Conversion.MapKeyToValue("PredictedLabel"));
+
+            _model = pipe.Fit(train);
+            return _model;
         }
 
-        public IDataView Transform(IDataView data)
-        {
-            if (_trainedModel == null)
-                throw new InvalidOperationException("Model has not been trained yet.");
+        /// <summary>
+        /// sets custom decision threshold in [0,1] for binary-like prediction
+        /// </summary>
+        public void SetThreshold(double threshold) => _threshold =
+            (threshold is < 0 or > 1)
+                ? throw new ArgumentOutOfRangeException(nameof(threshold), "threshold must be in [0,1]")
+                : threshold;
 
-            return _trainedModel.Transform(data);
+        /// <summary>
+        /// gets the current threshold
+        /// </summary>
+        public double GetThreshold() => _threshold;
+
+        /// <summary>
+        /// predicts if a single text sample is spam using thresholded score
+        /// </summary>
+        public bool PredictIsSpam(string text)
+        {
+            if (_model == null)
+                throw new InvalidOperationException("model must be trained before making predictions");
+
+            // create prediction engine for one-row inference
+            var engine = _ml.Model.CreatePredictionEngine<InputRow, ScoreRow>(_model);
+            float score = engine.Predict(new InputRow { Text = text }).Score;
+
+            return score > _threshold; // apply threshold
         }
 
-        public (float[] probabilities, string[] actuals) GetPredictionsAndLabels(IDataView testData)
+        /// <summary>
+        /// evaluates trained model on a test dataset and returns multiclass metrics
+        /// </summary>
+        public MulticlassClassificationMetrics EvaluateModel(IDataView test)
         {
-            var transformedData = Transform(testData);
-            var originalLabels = _mlContext.Data.CreateEnumerable<OriginalLabelData>(testData, reuseRowObject: false).ToList();
-            var predictions = _mlContext.Data.CreateEnumerable<PredictionWithLabel>(transformedData, reuseRowObject: false).ToList();
+            if (_model == null)
+                throw new InvalidOperationException("model must be trained before evaluation");
 
-            var probabilities = predictions.Select(x => x.Score.Max()).ToArray();
-            var actuals = originalLabels.Select(x => x.Label).ToArray();
-
-            return (probabilities, actuals);
+            return _ml.MulticlassClassification.Evaluate(_model.Transform(test));
         }
 
-        public class PredictionWithLabel
+        /// <summary>
+        /// transforms the data using the trained model pipeline
+        /// </summary>
+        public IDataView Transform(IDataView data) =>
+            _model?.Transform(data) ?? throw new InvalidOperationException("model must be trained");
+
+        /// <summary>
+        /// returns predicted probabilities and ground-truth labels from a test set
+        /// </summary>
+        public (float[] probabilities, string[] actuals) GetPredictionsAndLabels(IDataView test)
         {
-            [ColumnName("Score")]
-            public float[] Score { get; set; }
-            [ColumnName("Label")]
-            public uint Label { get; set; }
+            var scored = Transform(test);
+
+            return (
+                scored.GetColumn<float[]>("Score").Select(v => v.Max()).ToArray(),
+                _ml.Data.CreateEnumerable<LabelRow>(test, reuseRowObject: false)
+                      .Select(r => r.Label).ToArray());
         }
 
-        public class OriginalLabelData
+        // helper class for extracting true labels from test data
+        private sealed class LabelRow
         {
-            [ColumnName("Label")]
-            public string Label { get; set; }
+            public string Label { get; set; } // original string label (used for evaluation comparison)
+        }
+
+        // helper class used when making a single prediction from input string
+        private sealed class InputRow
+        {
+            public string Text { get; set; } // text input to be classified
+        }
+
+        // helper class for extracting score from model output
+        private sealed class ScoreRow
+        {
+            public float Score { get; set; } // raw model score (used to apply threshold)
         }
     }
 }

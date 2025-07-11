@@ -257,38 +257,70 @@ namespace ML.Design
             PopulateGraphOptions();
         }
 
+        /// <summary>
+        /// trains a binary classification model using the selected algorithm and optimizes threshold on validation set
+        /// </summary>
         private void TrainBinaryModel(string selectedAlgorithm, ref string algorithmName)
         {
+            // perform a double split: 70% train, 15% validation, 15% test
+            var split1 = _mlContext.Data.TrainTestSplit(_trainingData, testFraction: 0.30, seed: 42); // 70% train
+            var split2 = _mlContext.Data.TrainTestSplit(split1.TestSet, testFraction: 0.50, seed: 42); // 15% val / 15% test
+            var train = split1.TrainSet;
+            var validation = split2.TrainSet;
+            var test = split2.TestSet;
+
+            // train selected algorithm
             switch (selectedAlgorithm)
             {
                 case "Logistic regression":
-                    _binaryModel.TrainLogisticRegression(_trainingData);
-                    algorithmName = "LbfgsLogisticRegression";
+                    _binaryModel.TrainLogisticRegression(train);
+                    algorithmName = "LbfgsLogisticRegression"; 
                     break;
+
                 case "Averaged Perceptron":
-                    _binaryModel.TrainAveragedPerceptron(_trainingData);
+                    _binaryModel.TrainAveragedPerceptron(train);
                     algorithmName = "AveragedPerceptron";
                     break;
-                default:
-                    throw new InvalidOperationException($"Unrecognized algorithm for binary classification: {selectedAlgorithm}");
             }
+
+            // tune the decision threshold using validation set (based on F1-score)
+            double optimizedThreshold = _binaryModel.OptimizeThresholdByF1(validation);
+
+            // store final test set for downstream evaluation/graphing
+            _testData = test;
         }
 
+        /// <summary>
+        /// trains a multiclass (or binary) text classification model and prepares test set
+        /// </summary>
         private void TrainTextualModel(string selectedAlgorithm, ref string algorithmName)
         {
+            // perform a double split: 70% train, 15% validation, 15% test
+            var split1 = _mlContext.Data.TrainTestSplit(_trainingData, testFraction: 0.30, seed: 42); // 70% train
+            var split2 = _mlContext.Data.TrainTestSplit(split1.TestSet, testFraction: 0.50, seed: 42); // 15% val / 15% test
+            var train = split1.TrainSet;
+            var validation = split2.TrainSet;
+            var test = split2.TestSet;
+
+            // train selected algorithm
             switch (selectedAlgorithm)
             {
                 case "Decision tree":
-                    _textualModel.TrainFastForest(_trainingData);
-                    algorithmName = "FastForest";
+                    _textualModel.TrainFastForest(train);
+                    algorithmName = "FastForest";  
                     break;
+
                 case "Naive Bayes classifier":
-                    _textualModel.TrainNaiveBayes(_trainingData);
-                    algorithmName = "NaiveBayes";
+                    _textualModel.TrainNaiveBayes(train);
+                    algorithmName = "NaiveBayes"; 
                     break;
+
                 default:
                     throw new InvalidOperationException($"Unrecognized algorithm for textual classification: {selectedAlgorithm}");
             }
+
+            // store final test set for downstream evaluation/graphing
+            _testData = test;
         }
 
         private void PopulateGraphOptions()

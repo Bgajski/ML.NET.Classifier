@@ -2,9 +2,18 @@
 
 namespace ML.Performance
 {
+    /// <summary>
+    /// provides descriptions and metric calculations 
+    /// for classification performance visualizations
+    /// handles both binary and multiclass classification metrics
+    /// </summary>
     public class PerformanceDescription : IPerformanceDescription
     {
-        public string GetPredictionDistributionDescription()  
+        /// <summary>
+        /// returns a short explanation for prediction distribution charts
+        /// includes explanation of precision and recall for both classes
+        /// </summary>
+        public string GetPredictionDistributionDescription()
         {
             return "The Performance\n" +
                    "evaluation of predictions \n" +
@@ -29,7 +38,7 @@ namespace ML.Performance
                    "that are correctly\n" +
                    "identified. High recall \n" +
                    "means that the model \n" +
-                   "identifies a larger " +
+                   "identifies a larger \n" +
                    "number of true positive \n" +
                    "cases. \n\n" +
                    "Precision of negative \n" +
@@ -52,6 +61,9 @@ namespace ML.Performance
                    "false positive results.";
         }
 
+        /// <summary>
+        /// explains what the ROC curve represents and the meaning of AUC
+        /// </summary>
         public string GetReceiverCurveDescription()
         {
             return "The Receiver Operating \n" +
@@ -74,6 +86,9 @@ namespace ML.Performance
                    "effectiveness.";
         }
 
+        /// <summary>
+        /// describes the layout and meaning of the confusion matrix
+        /// </summary>
         public string GetConfusionMatrixDescription()
         {
             return "The confusion matrix \n" +
@@ -95,6 +110,11 @@ namespace ML.Performance
                    "predicted negative\n" +
                    "cases.";
         }
+
+        /// <summary>
+        /// describes what is shown on a cumulative gains chart,
+        /// including interpretation of TPR and FPR values
+        /// </summary>
         public string GetCumulativeGainsChartDescription()
         {
             return "The cumulative gains \n" +
@@ -116,6 +136,9 @@ namespace ML.Performance
                    "positive.";
         }
 
+        /// <summary>
+        /// returns ROC AUC score formatted for display
+        /// </summary>
         public List<(string text, Color color)> GetMetricsReceiverCurve(BinaryClassificationMetrics metrics)
         {
             return new List<(string text, Color color)>
@@ -125,6 +148,9 @@ namespace ML.Performance
             };
         }
 
+        /// <summary>
+        /// returns formatted precision and recall values for both classes
+        /// </summary>
         public List<(string text, Color color)> GetMetricsPredictionDistribution(BinaryClassificationMetrics metrics)
         {
             return new List<(string text, Color color)>
@@ -140,27 +166,34 @@ namespace ML.Performance
             };
         }
 
+        /// <summary>
+        /// extracts TP, FP, TN, FN counts from confusion matrix for both classes
+        /// </summary>
         public List<(string text, Color color)> GetMetricsConfusionMatrix(MulticlassClassificationMetrics metrics)
         {
             var counts = metrics.ConfusionMatrix.Counts;
 
-            int tpHam = (int)counts[0][0];
-            int tnHam = (int)counts[1][1];
-            int fpHam = (int)counts[1][0];
-            int fnHam = (int)counts[0][1];
+            // class 0 = ham (not spam)
+            int tpHam = (int)counts[0][0]; // predicted 0, actual 0
+            int fnHam = (int)counts[0][1]; // predicted 0, actual 1
+            int fpHam = (int)counts[1][0]; // predicted 1, actual 0
+            int tnHam = (int)counts[1][1]; // predicted 1, actual 1
 
-            int tpSpam = (int)counts[1][1];
-            int tnSpam = (int)counts[0][0];
-            int fpSpam = (int)counts[0][1];
-            int fnSpam = (int)counts[1][0];
+            // class 1 = spam (mirrored view)
+            int tpSpam = tnHam;
+            int fnSpam = fpHam;
+            int fpSpam = fnHam;
+            int tnSpam = tpHam;
 
             return new List<(string text, Color color)>
             {
+                // HAM class metrics
                 ("Class 0 (ham) - True Positives (TP): ", Color.Red), ($"{tpHam} ", Color.Green),
                 ("Class 0 (ham) - True Negatives (TN): ", Color.Red), ($"{tnHam} ", Color.Green),
                 ("Class 0 (ham) - False Positives (FP): ", Color.Red), ($"{fpHam} ", Color.Green),
                 ("Class 0 (ham) - False Negatives (FN): ", Color.Red), ($"{fnHam} ", Color.Green),
 
+                // SPAM class metrics
                 ("Class 1 (spam) - True Positives (TP): ", Color.Red), ($"{tpSpam} ", Color.Green),
                 ("Class 1 (spam) - True Negatives (TN): ", Color.Red), ($"{tnSpam} ", Color.Green),
                 ("Class 1 (spam) - False Positives (FP): ", Color.Red), ($"{fpSpam} ", Color.Green),
@@ -168,24 +201,33 @@ namespace ML.Performance
             };
         }
 
+        /// <summary>
+        /// computes and formats TPR and FPR values for both classes,
+        /// based on the confusion matrix
+        /// </summary>
         public List<(string text, Color color)> GetMetricsCumulativeGainsChart(MulticlassClassificationMetrics metrics)
         {
             var counts = metrics.ConfusionMatrix.Counts;
 
+            // extract confusion matrix values
             int tpHam = (int)counts[0][0];
-            int tnHam = (int)counts[1][1];
-            int fpHam = (int)counts[1][0];
             int fnHam = (int)counts[0][1];
+            int fpHam = (int)counts[1][0];
+            int tnHam = (int)counts[1][1];
 
-            int tpSpam = (int)counts[1][1];
-            int tnSpam = (int)counts[0][0];
-            int fpSpam = (int)counts[0][1];
-            int fnSpam = (int)counts[1][0];
+            // mirrored values for spam
+            int tpSpam = tnHam;
+            int fnSpam = fpHam;
+            int fpSpam = fnHam;
+            int tnSpam = tpHam;
 
-            double tprHam = (double)tpHam / (tpHam + fnHam); 
-            double fprHam = (double)fpHam / (fpHam + tnHam); 
-            double tprSpam = (double)tpSpam / (tpSpam + fnSpam); 
-            double fprSpam = (double)fpSpam / (fpSpam + tnSpam); 
+            // TPR = TP / (TP + FN) — proportion of actual positives correctly predicted
+            double tprHam = (tpHam + fnHam) > 0 ? (double)tpHam / (tpHam + fnHam) : 0;
+            double tprSpam = (tpSpam + fnSpam) > 0 ? (double)tpSpam / (tpSpam + fnSpam) : 0;
+
+            // FPR = FP / (FP + TN) — proportion of actual negatives predicted as positives
+            double fprHam = (fpHam + tnHam) > 0 ? (double)fpHam / (fpHam + tnHam) : 0;
+            double fprSpam = (fpSpam + tnSpam) > 0 ? (double)fpSpam / (fpSpam + tnSpam) : 0;
 
             return new List<(string text, Color color)>
             {

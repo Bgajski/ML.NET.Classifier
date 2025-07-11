@@ -8,6 +8,9 @@ EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ML.Data", "ML.Data\ML.Data.csproj", "{71764B8A-0972-41DA-A32C-F665FC4730E1}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ML.Graph", "ML.Graph\ML.Graph.csproj", "{2EB23552-6246-49C5-AA49-19EFBE45ED5C}"
+	ProjectSection(ProjectDependencies) = postProject
+		{C6A74A99-642C-4DA8-990F-4AAC3D8C3DFB} = {C6A74A99-642C-4DA8-990F-4AAC3D8C3DFB}
+	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ML.Model", "ML.Model\ML.Model.csproj", "{108BE749-6986-4EC8-BCA8-8E73FBEC1B7C}"
 EndProject
@@ -16,6 +19,8 @@ EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ML.Performance", "ML.Performance\ML.Performance.csproj", "{C6A74A99-642C-4DA8-990F-4AAC3D8C3DFB}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ML.Tests", "ML.Tests\ML.Tests.csproj", "{4C127D7F-0FBE-4544-9251-17233249E7E3}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "ML.Dataset", "ML.Dataset", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

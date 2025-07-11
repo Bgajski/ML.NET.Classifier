@@ -1,102 +1,84 @@
 ﻿using Microsoft.ML.Data;
+using System;
+using System.Drawing;
+using System.Linq;
 using System.Windows.Forms.DataVisualization.Charting;
 
 namespace ML.Performance
 {
+    /// <summary>
+    /// displays the counts from a binary confusion matrix as a bar chart
+    /// </summary>
     public class ConfusionMatrixDisplay
     {
-        private static readonly List<(Color LightColor, Color DarkColor)> ColorPalette = new List<(Color, Color)>
+        // palette for alternating bar colors (true vs false cases)
+        private static readonly (Color Light, Color Dark)[] Palette =
         {
-            (Color.FromArgb(52, 152, 219), Color.FromArgb(41, 128, 185)),    
-            (Color.FromArgb(231, 76, 60), Color.FromArgb(192, 57, 43)),      
-            (Color.FromArgb(46, 204, 113), Color.FromArgb(39, 174, 96)),     
-            (Color.FromArgb(155, 89, 182), Color.FromArgb(142, 68, 173)),    
-            (Color.FromArgb(241, 196, 15), Color.FromArgb(243, 156, 18))     
+            (Color.FromArgb(52,152,219), Color.FromArgb(41,128,185)),
+            (Color.FromArgb(231,76,60),  Color.FromArgb(192,57,43))
         };
 
-        public static void ShowMetricsChart(
-            MulticlassClassificationMetrics metrics, Chart chart, string modelName)
+        public static void ShowMetricsChart(MulticlassClassificationMetrics m, Chart chart, string modelName)
         {
-            var counts = metrics.ConfusionMatrix.Counts;
+            // extract raw counts: matrix[row][col] → row = actual, col = predicted
+            var c = m.ConfusionMatrix.Counts;
 
-            int tpHam = (int)counts[0][0];
-            int tnHam = (int)counts[1][1];
-            int fpHam = (int)counts[1][0];
-            int fnHam = (int)counts[0][1];
+            // extract binary confusion matrix entries
+            int tn = (int)c[0][0]; // true negatives: predicted 0, actual 0
+            int fp = (int)c[0][1]; // false positives: predicted 1, actual 0
+            int fn = (int)c[1][0]; // false negatives: predicted 0, actual 1
+            int tp = (int)c[1][1]; // true positives: predicted 1, actual 1
 
-            int tpSpam = (int)counts[1][1];
-            int tnSpam = (int)counts[0][0];
-            int fpSpam = (int)counts[0][1];
-            int fnSpam = (int)counts[1][0];
+            // find maximum value to normalize y-axis (rounded to nearest 100)
+            int axisMax = new[] { tp, tn, fp, fn }.Max();
+            axisMax = (int)(Math.Ceiling(axisMax / 100.0) * 100);
 
-            int maxValue = new[] { tpHam, tnHam, fpHam, fnHam, tpSpam, tnSpam, fpSpam, fnSpam }.Max();
-            int axisYMaximum = (int)(Math.Ceiling(maxValue / 100.0) * 100);
-
+            // reset chart visuals
             chart.Series.Clear();
+            chart.ChartAreas.Clear();
 
-            var chartArea = new ChartArea
+            var area = new ChartArea
             {
                 BackColor = Color.White,
-                AxisX = { Title = "Performance Metric", TitleFont = new Font("Tahoma", 10, FontStyle.Regular) },
-                AxisY = { Title = "Count", TitleFont = new Font("Tahoma", 10, FontStyle.Regular) }
+                AxisX = { Title = "Metric", TitleFont = new Font("Tahoma", 10) },
+                AxisY = { Title = "Count", TitleFont = new Font("Tahoma", 10) }
             };
-            chart.ChartAreas.Clear();
-            chart.ChartAreas.Add(chartArea);
+            chart.ChartAreas.Add(area);
 
-            AddMetricSeries(chart, "True Positives (spam)", tpSpam, ColorPalette[0].DarkColor);
-            AddMetricSeries(chart, "True Positives (ham)", tpHam, ColorPalette[0].LightColor);
-            AddMetricSeries(chart, "True Negatives (spam)", tnSpam, ColorPalette[1].DarkColor);
-            AddMetricSeries(chart, "True Negatives (ham)", tnHam, ColorPalette[1].LightColor);
-            AddMetricSeries(chart, "False Positives (spam)", fpSpam, ColorPalette[2].DarkColor);
-            AddMetricSeries(chart, "False Positives (ham)", fpHam, ColorPalette[2].LightColor);
-            AddMetricSeries(chart, "False Negatives (spam)", fnSpam, ColorPalette[3].DarkColor);
-            AddMetricSeries(chart, "False Negatives (ham)", fnHam, ColorPalette[3].LightColor);
+            // add bars to chart
+            AddBar(chart, "TP", tp, Palette[0].Dark);   // true positive
+            AddBar(chart, "TN", tn, Palette[0].Light);  // true negative
+            AddBar(chart, "FP", fp, Palette[1].Dark);   // false positive
+            AddBar(chart, "FN", fn, Palette[1].Light);  // false negative
 
-            chartArea.AxisX.LabelStyle.Enabled = false;
-            chartArea.AxisX.MajorGrid.Enabled = false;
-            chartArea.AxisX.MinorGrid.Enabled = false;
-            chartArea.AxisY.Maximum = axisYMaximum;
-            chartArea.AxisY.Interval = axisYMaximum / 10;
-            chartArea.AxisY.LabelStyle.Format = "0";
-            chartArea.AxisY.LabelStyle.Font = new Font("Tahoma", 10);
-
-            foreach (var series in chart.Series)
-            {
-                series["PointWidth"] = "1.0";
-                series.IsValueShownAsLabel = false;
-                series.Font = new Font("Tahoma", 10); 
-            }
-
-            chartArea.AxisY.MajorGrid.LineColor = Color.LightGray;
+            // remove x-labels, scale y-axis
+            area.AxisX.LabelStyle.Enabled = false;
+            area.AxisY.Maximum = axisMax;
+            area.AxisY.Interval = axisMax / 10.0;
+            area.AxisY.MajorGrid.LineColor = Color.LightGray;
 
             chart.Legends.Clear();
             chart.Legends.Add(new Legend
             {
                 Docking = Docking.Right,
-                Alignment = StringAlignment.Near,
-                Font = new Font("Tahoma", 10, FontStyle.Regular),
-                BackColor = Color.Transparent
+                Font = new Font("Tahoma", 9)
             });
-
-            chart.BackColor = Color.White;
-            chart.BorderlineColor = Color.LightGray;
-            chart.BorderlineDashStyle = ChartDashStyle.Solid;
-            chart.BorderlineWidth = 1;
 
             chart.Invalidate();
         }
 
-        private static void AddMetricSeries(Chart chart, string name, int value, Color color)
+        // helper to add a single colored bar to the chart
+        private static void AddBar(Chart chart, string name, int value, Color color)
         {
-            var series = new Series
+            var s = new Series
             {
                 Name = name,
                 ChartType = SeriesChartType.Column,
                 Color = color,
                 IsValueShownAsLabel = false
             };
-            series.Points.Add(new DataPoint(0, value));
-            chart.Series.Add(series);
+            s.Points.Add(value);
+            chart.Series.Add(s);
         }
     }
 }

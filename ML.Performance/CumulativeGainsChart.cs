@@ -1,9 +1,17 @@
-﻿using System.Windows.Forms.DataVisualization.Charting;
+﻿using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Linq;
+using System.Windows.Forms.DataVisualization.Charting;
 
 namespace ML.Performance
 {
+    /// <summary>
+    /// draws a cumulative gains chart (like ROC) for binary classification: shows performance gain over random guessing
+    /// </summary>
     public static class CumulativeGainsChart
     {
+        // predefined color palette for ham/spam curves
         private static readonly List<(Color LightColor, Color DarkColor)> ColorPalette = new List<(Color, Color)>
         {
             (Color.FromArgb(52, 152, 219), Color.FromArgb(41, 128, 185)),
@@ -15,41 +23,43 @@ namespace ML.Performance
 
         public static void ShowCumulativeGainsChart(float[] probabilities, string[] actuals, Chart chart, string modelName)
         {
+            // convert labels to booleans for spam/ham
             bool[] isSpam = actuals.Select(a => a.Equals("spam", StringComparison.OrdinalIgnoreCase)).ToArray();
             bool[] isHam = actuals.Select(a => a.Equals("ham", StringComparison.OrdinalIgnoreCase)).ToArray();
 
+            // zip labels + probabilities and sort by descending probability
             var data = probabilities.Zip(actuals, (prob, label) => new { Probability = prob, Label = label })
                                     .OrderByDescending(x => x.Probability)
                                     .ToList();
 
-            int totalSpam = isSpam.Count(a => a);
-            int totalHam = isHam.Count(a => a);
+            int totalSpam = isSpam.Count(x => x);
+            int totalHam = isHam.Count(x => x);
 
             int cumulativeSpam = 0;
             int cumulativeHam = 0;
 
-            List<double> tprSpamList = new List<double>();
-            List<double> fprSpamList = new List<double>();
-            List<double> tprHamList = new List<double>();
-            List<double> fprHamList = new List<double>();
+            // store tpr and fpr over ranked population
+            List<double> tprSpamList = new();
+            List<double> fprSpamList = new();
+            List<double> tprHamList = new();
+            List<double> fprHamList = new();
 
+            // walk through ranked instances and compute cumulative TPR and FPR
             foreach (var item in data)
             {
                 if (item.Label.Equals("spam", StringComparison.OrdinalIgnoreCase))
-                {
                     cumulativeSpam++;
-                }
                 else if (item.Label.Equals("ham", StringComparison.OrdinalIgnoreCase))
-                {
                     cumulativeHam++;
-                }
 
+                // spam: tpr = hits / total spam, fpr = ham mistakes / total ham
                 double tprSpam = totalSpam > 0 ? (double)cumulativeSpam / totalSpam : 0;
                 double fprSpam = totalHam > 0 ? (double)cumulativeHam / totalHam : 0;
 
                 tprSpamList.Add(tprSpam);
                 fprSpamList.Add(fprSpam);
 
+                // ham: tpr = ham hits / total ham, fpr = spam mistakes / total spam
                 double tprHam = totalHam > 0 ? (double)cumulativeHam / totalHam : 0;
                 double fprHam = totalSpam > 0 ? (double)cumulativeSpam / totalSpam : 0;
 
@@ -57,12 +67,13 @@ namespace ML.Performance
                 fprHamList.Add(fprHam);
             }
 
+            // clear previous chart
             chart.Series.Clear();
-
-            var chartArea = new ChartArea();
             chart.ChartAreas.Clear();
+            var chartArea = new ChartArea();
             chart.ChartAreas.Add(chartArea);
 
+            // draw diagonal baseline (random model)
             var randomSeries = new Series
             {
                 Name = "Random Selection",
@@ -70,45 +81,39 @@ namespace ML.Performance
                 Color = Color.LightGray,
                 BorderDashStyle = ChartDashStyle.Dash,
                 BorderWidth = 2,
-                IsVisibleInLegend = true,
-                IsValueShownAsLabel = false
+                IsVisibleInLegend = true
             };
             randomSeries.Points.AddXY(0, 0);
             randomSeries.Points.AddXY(1, 1);
             chart.Series.Add(randomSeries);
 
+            // draw gains curve for ham
             var hamSeries = new Series
             {
                 Name = "Cumulative Gains of the Model (Ham)",
                 ChartType = SeriesChartType.Line,
                 Color = ColorPalette[0].LightColor,
                 BorderWidth = 2,
-                IsVisibleInLegend = true,
-                IsValueShownAsLabel = false
+                IsVisibleInLegend = true
             };
-
             for (int i = 0; i < tprHamList.Count; i++)
-            {
                 hamSeries.Points.AddXY(fprHamList[i], tprHamList[i]);
-            }
             chart.Series.Add(hamSeries);
 
+            // draw gains curve for spam
             var spamSeries = new Series
             {
                 Name = "Cumulative Gains of the Model (Spam)",
                 ChartType = SeriesChartType.Line,
                 Color = ColorPalette[1].DarkColor,
                 BorderWidth = 2,
-                IsVisibleInLegend = true,
-                IsValueShownAsLabel = false
+                IsVisibleInLegend = true
             };
-
             for (int i = 0; i < tprSpamList.Count; i++)
-            {
                 spamSeries.Points.AddXY(fprSpamList[i], tprSpamList[i]);
-            }
             chart.Series.Add(spamSeries);
 
+            // axis config and visuals
             chartArea.AxisX.Title = "False Positive Rate";
             chartArea.AxisX.TitleFont = new Font("Tahoma", 10);
             chartArea.AxisY.Title = "True Positive Rate";
