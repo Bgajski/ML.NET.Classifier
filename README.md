@@ -101,7 +101,7 @@ Visual Studio 2022 (v17.8+) or VS Code with C# Dev Kit
 
 1. Clone the repository:
 
-- git clone https://github.com/yourusername/ML.NET.Classifier.git
+- git clone https://github.com/Bgajski/ML.NET.Classifier
 - cd ML.NET.Classifier
 
 2. Run
