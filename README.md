@@ -100,10 +100,11 @@ Both models classify SMS messages with high overall accuracy, with Decision Tree
 Visual Studio 2022 (v17.8+) or VS Code with C# Dev Kit
 
 1. Clone the repository:
-git clone https://github.com/yourusername/ML.NET.Classifier.git
-cd ML.NET.Classifier
+
+- git clone https://github.com/yourusername/ML.NET.Classifier.git
+- cd ML.NET.Classifier
 
 2. Run
-dotnet build
-dotnet run --project ML.NET.Classifier
-
+   
+- dotnet build
+- dotnet run --project ML.NET.Classifier
