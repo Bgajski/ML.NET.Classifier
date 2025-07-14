@@ -107,4 +107,4 @@ Visual Studio 2022 (v17.8+) or VS Code with C# Dev Kit
 2. Run
    
 - dotnet build
-- dotnet run -project ML.NET.Classifier
+- dotnet run --project ML.NET.Classifier
