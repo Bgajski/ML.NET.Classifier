@@ -1,0 +1,33 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ML.Design</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Interface.cs" />
+    <Compile Remove="Interface.Designer.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Remove="Interface.resx" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WinForms.DataVisualization" Version="1.9.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ML.DataPreparation\ML.DataPreparation.csproj" />
+    <ProjectReference Include="..\ML.Data\ML.Data.csproj" />
+    <ProjectReference Include="..\ML.Graph\ML.Graph.csproj" />
+    <ProjectReference Include="..\ML.Model\ML.Model.csproj" />
+    <ProjectReference Include="..\ML.Performance\ML.Performance.csproj" />
+  </ItemGroup>
+
+</Project>
